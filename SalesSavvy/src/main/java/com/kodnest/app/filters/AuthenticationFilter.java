@@ -32,7 +32,8 @@ public class AuthenticationFilter implements Filter {
     private final AuthServiceContract authService;
     private final UserRepository userRepository;
 
-    private static final String ALLOWED_ORIGIN = "http://localhost:3000";
+    // CHANGE THIS WHEN DEPLOYED
+    private static final String ALLOWED_ORIGIN = "https://ecommerce-salessavvy.onrender.com";
 
     private static final String[] UNAUTHENTICATED_PATHS = {
             "/api/users/register",
@@ -55,34 +56,40 @@ public class AuthenticationFilter implements Filter {
         try {
             String requestURI = httpRequest.getRequestURI();
             logger.info("Request URI: {}", requestURI);
-            
-         // ===== ALLOW FRONTEND AND STATIC RESOURCES WITHOUT AUTH =====
+
+            // ===== 1. ALLOW FRONTEND AND STATIC RESOURCES =====
             if (requestURI.equals("/") ||
                 requestURI.equals("/index.html") ||
                 requestURI.startsWith("/assets/") ||
                 requestURI.startsWith("/static/") ||
                 requestURI.startsWith("/favicon.ico") ||
                 requestURI.startsWith("/manifest.json") ||
-                requestURI.startsWith("/logo.png")) {
+                requestURI.startsWith("/logo.png") ||
+                requestURI.startsWith("/vite.svg")) {
 
                 chain.doFilter(request, response);
                 return;
             }
 
+            // ===== 2. ALLOW PUBLIC PRODUCT APIS WITHOUT LOGIN =====
+            if (requestURI.startsWith("/api/products")) {
+                chain.doFilter(request, response);
+                return;
+            }
 
-            // ✅ Allow OPTIONS (CORS preflight)
+            // ===== 3. CORS PREFLIGHT =====
             if ("OPTIONS".equalsIgnoreCase(httpRequest.getMethod())) {
                 setCORSHeaders(httpResponse);
                 return;
             }
 
-            // ✅ Allow unauthenticated paths
+            // ===== 4. ALLOW LOGIN & REGISTER APIS =====
             if (Arrays.asList(UNAUTHENTICATED_PATHS).contains(requestURI)) {
                 chain.doFilter(request, response);
                 return;
             }
 
-            // ✅ Extract token from Authorization header OR cookies
+            // ===== 5. TOKEN VALIDATION FOR PROTECTED APIS =====
             String token = extractToken(httpRequest);
             System.out.println("TOKEN = " + token);
 
@@ -92,7 +99,7 @@ public class AuthenticationFilter implements Filter {
                 return;
             }
 
-            // ✅ Extract username
+            // ===== 6. VALIDATE USER FROM TOKEN =====
             String username = authService.extractUsername(token);
             Optional<User> userOptional = userRepository.findByUsername(username);
 
@@ -107,7 +114,7 @@ public class AuthenticationFilter implements Filter {
 
             logger.info("Authenticated User: {}, Role: {}", authenticatedUser.getUsername(), role);
 
-            // ✅ Role-based access
+            // ===== 7. ROLE BASED SECURITY =====
             if (requestURI.startsWith("/admin/") && role != Role.ADMIN) {
                 sendErrorResponse(httpResponse, HttpServletResponse.SC_FORBIDDEN,
                         "Forbidden: Admin access required");
@@ -120,7 +127,7 @@ public class AuthenticationFilter implements Filter {
                 return;
             }
 
-            // ✅ Attach authenticated user
+            // Attach authenticated user
             httpRequest.setAttribute("authenticatedUser", authenticatedUser);
 
             chain.doFilter(request, response);
@@ -132,16 +139,13 @@ public class AuthenticationFilter implements Filter {
         }
     }
 
-    // 🔑 Reads JWT from Authorization header OR cookies
     private String extractToken(HttpServletRequest request) {
 
-        // 1️⃣ Authorization header (Postman / mobile apps)
         String authHeader = request.getHeader("Authorization");
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             return authHeader.substring(7);
         }
 
-        // 2️⃣ Cookies (browser)
         Cookie[] cookies = request.getCookies();
         if (cookies != null) {
             for (Cookie cookie : cookies) {
