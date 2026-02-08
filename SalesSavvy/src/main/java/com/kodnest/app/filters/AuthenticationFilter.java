@@ -23,7 +23,7 @@ import com.kodnest.app.entities.User;
 import com.kodnest.app.userrepositories.UserRepository;
 import com.kodnest.app.userservices.AuthServiceContract;
 
-@WebFilter(urlPatterns = {"/api/*", "/admin/*", "/*"})
+@WebFilter(urlPatterns = {"/api/*", "/admin/*"})
 @Component
 public class AuthenticationFilter implements Filter {
 
@@ -32,7 +32,7 @@ public class AuthenticationFilter implements Filter {
     private final AuthServiceContract authService;
     private final UserRepository userRepository;
 
-    private static final String ALLOWED_ORIGIN = "http://localhost:9090";
+    private static final String ALLOWED_ORIGIN = "http://localhost:3000";
 
     private static final String[] UNAUTHENTICATED_PATHS = {
             "/api/users/register",
@@ -52,31 +52,25 @@ public class AuthenticationFilter implements Filter {
         HttpServletRequest httpRequest = (HttpServletRequest) request;
         HttpServletResponse httpResponse = (HttpServletResponse) response;
 
-        String requestURI = httpRequest.getRequestURI();
-        logger.info("Request URI: {}", requestURI);
-
-        // ===== Allow React Static Files =====
-        if (isPublicResource(requestURI)) {
-            chain.doFilter(request, response);
-            return;
-        }
-
-        // ===== Handle CORS Preflight =====
-        if ("OPTIONS".equalsIgnoreCase(httpRequest.getMethod())) {
-            setCORSHeaders(httpResponse);
-            chain.doFilter(request, response);
-            return;
-        }
-
-        // ===== Allow Login & Register Without Token =====
-        if (Arrays.asList(UNAUTHENTICATED_PATHS).contains(requestURI)) {
-            chain.doFilter(request, response);
-            return;
-        }
-
         try {
+            String requestURI = httpRequest.getRequestURI();
+            logger.info("Request URI: {}", requestURI);
+
+            // ✅ Allow OPTIONS (CORS preflight)
+            if ("OPTIONS".equalsIgnoreCase(httpRequest.getMethod())) {
+                setCORSHeaders(httpResponse);
+                return;
+            }
+
+            // ✅ Allow unauthenticated paths
+            if (Arrays.asList(UNAUTHENTICATED_PATHS).contains(requestURI)) {
+                chain.doFilter(request, response);
+                return;
+            }
+
+            // ✅ Extract token from Authorization header OR cookies
             String token = extractToken(httpRequest);
-            logger.info("TOKEN = {}", token);
+            System.out.println("TOKEN = " + token);
 
             if (token == null || !authService.validateToken(token)) {
                 sendErrorResponse(httpResponse, HttpServletResponse.SC_UNAUTHORIZED,
@@ -84,6 +78,7 @@ public class AuthenticationFilter implements Filter {
                 return;
             }
 
+            // ✅ Extract username
             String username = authService.extractUsername(token);
             Optional<User> userOptional = userRepository.findByUsername(username);
 
@@ -98,12 +93,20 @@ public class AuthenticationFilter implements Filter {
 
             logger.info("Authenticated User: {}, Role: {}", authenticatedUser.getUsername(), role);
 
+            // ✅ Role-based access
             if (requestURI.startsWith("/admin/") && role != Role.ADMIN) {
                 sendErrorResponse(httpResponse, HttpServletResponse.SC_FORBIDDEN,
                         "Forbidden: Admin access required");
                 return;
             }
 
+            if (requestURI.startsWith("/api/") && role != Role.CUSTOMER) {
+                sendErrorResponse(httpResponse, HttpServletResponse.SC_FORBIDDEN,
+                        "Forbidden: Customer access required");
+                return;
+            }
+
+            // ✅ Attach authenticated user
             httpRequest.setAttribute("authenticatedUser", authenticatedUser);
 
             chain.doFilter(request, response);
@@ -115,34 +118,16 @@ public class AuthenticationFilter implements Filter {
         }
     }
 
-    // ===== Allow Frontend Files Without Authentication =====
-    private boolean isPublicResource(String uri) {
-        return uri.equals("/")
-                || uri.startsWith("/index.html")
-                || uri.startsWith("/static/")
-                || uri.startsWith("/assets/")
-                || uri.endsWith(".js")
-                || uri.endsWith(".css")
-                || uri.endsWith(".html")
-                || uri.endsWith(".png")
-                || uri.endsWith(".jpg")
-                || uri.endsWith(".jpeg")
-                || uri.endsWith(".gif")
-                || uri.endsWith(".svg")
-                || uri.endsWith(".ico")
-                || uri.endsWith(".woff")
-                || uri.endsWith(".woff2")
-                || uri.endsWith(".ttf");
-    }
-
-    // ===== Extract JWT Token =====
+    // 🔑 Reads JWT from Authorization header OR cookies
     private String extractToken(HttpServletRequest request) {
 
+        // 1️⃣ Authorization header (Postman / mobile apps)
         String authHeader = request.getHeader("Authorization");
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             return authHeader.substring(7);
         }
 
+        // 2️⃣ Cookies (browser)
         Cookie[] cookies = request.getCookies();
         if (cookies != null) {
             for (Cookie cookie : cookies) {
@@ -155,15 +140,14 @@ public class AuthenticationFilter implements Filter {
         return null;
     }
 
-    // ===== CORS Headers =====
     private void setCORSHeaders(HttpServletResponse response) {
         response.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
         response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
         response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
         response.setHeader("Access-Control-Allow-Credentials", "true");
+        response.setStatus(HttpServletResponse.SC_OK);
     }
 
-    // ===== Error Response =====
     private void sendErrorResponse(HttpServletResponse response, int statusCode, String message)
             throws IOException {
         response.setStatus(statusCode);
