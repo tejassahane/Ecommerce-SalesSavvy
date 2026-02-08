@@ -55,6 +55,20 @@ public class AuthenticationFilter implements Filter {
         try {
             String requestURI = httpRequest.getRequestURI();
             logger.info("Request URI: {}", requestURI);
+            
+         // ===== ALLOW FRONTEND AND STATIC RESOURCES WITHOUT AUTH =====
+            if (requestURI.equals("/") ||
+                requestURI.equals("/index.html") ||
+                requestURI.startsWith("/assets/") ||
+                requestURI.startsWith("/static/") ||
+                requestURI.startsWith("/favicon.ico") ||
+                requestURI.startsWith("/manifest.json") ||
+                requestURI.startsWith("/logo.png")) {
+
+                chain.doFilter(request, response);
+                return;
+            }
+
 
             // ✅ Allow OPTIONS (CORS preflight)
             if ("OPTIONS".equalsIgnoreCase(httpRequest.getMethod())) {
