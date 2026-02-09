@@ -32,7 +32,6 @@ public class AuthenticationFilter implements Filter {
     private final AuthServiceContract authService;
     private final UserRepository userRepository;
 
-    // CHANGE THIS WHEN DEPLOYED
     private static final String ALLOWED_ORIGIN = "http://localhost:3000";
 
     private static final String[] UNAUTHENTICATED_PATHS = {
@@ -57,39 +56,19 @@ public class AuthenticationFilter implements Filter {
             String requestURI = httpRequest.getRequestURI();
             logger.info("Request URI: {}", requestURI);
 
-            // ===== 1. ALLOW FRONTEND AND STATIC RESOURCES =====
-            if (requestURI.equals("/") ||
-                requestURI.equals("/index.html") ||
-                requestURI.startsWith("/assets/") ||
-                requestURI.startsWith("/static/") ||
-                requestURI.startsWith("/favicon.ico") ||
-                requestURI.startsWith("/manifest.json") ||
-                requestURI.startsWith("/logo.png") ||
-                requestURI.startsWith("/vite.svg")) {
-
-                chain.doFilter(request, response);
-                return;
-            }
-
-            // ===== 2. ALLOW PUBLIC PRODUCT APIS WITHOUT LOGIN =====
-            if (requestURI.startsWith("/api/products")) {
-                chain.doFilter(request, response);
-                return;
-            }
-
-            // ===== 3. CORS PREFLIGHT =====
+            // ✅ Allow OPTIONS (CORS preflight)
             if ("OPTIONS".equalsIgnoreCase(httpRequest.getMethod())) {
                 setCORSHeaders(httpResponse);
                 return;
             }
 
-            // ===== 4. ALLOW LOGIN & REGISTER APIS =====
+            // ✅ Allow unauthenticated paths
             if (Arrays.asList(UNAUTHENTICATED_PATHS).contains(requestURI)) {
                 chain.doFilter(request, response);
                 return;
             }
 
-            // ===== 5. TOKEN VALIDATION FOR PROTECTED APIS =====
+            // ✅ Extract token from Authorization header OR cookies
             String token = extractToken(httpRequest);
             System.out.println("TOKEN = " + token);
 
@@ -99,7 +78,7 @@ public class AuthenticationFilter implements Filter {
                 return;
             }
 
-            // ===== 6. VALIDATE USER FROM TOKEN =====
+            // ✅ Extract username
             String username = authService.extractUsername(token);
             Optional<User> userOptional = userRepository.findByUsername(username);
 
@@ -114,7 +93,7 @@ public class AuthenticationFilter implements Filter {
 
             logger.info("Authenticated User: {}, Role: {}", authenticatedUser.getUsername(), role);
 
-            // ===== 7. ROLE BASED SECURITY =====
+            // ✅ Role-based access
             if (requestURI.startsWith("/admin/") && role != Role.ADMIN) {
                 sendErrorResponse(httpResponse, HttpServletResponse.SC_FORBIDDEN,
                         "Forbidden: Admin access required");
@@ -127,7 +106,7 @@ public class AuthenticationFilter implements Filter {
                 return;
             }
 
-            // Attach authenticated user
+            // ✅ Attach authenticated user
             httpRequest.setAttribute("authenticatedUser", authenticatedUser);
 
             chain.doFilter(request, response);
@@ -139,13 +118,16 @@ public class AuthenticationFilter implements Filter {
         }
     }
 
+    // 🔑 Reads JWT from Authorization header OR cookies
     private String extractToken(HttpServletRequest request) {
 
+        // 1️⃣ Authorization header (Postman / mobile apps)
         String authHeader = request.getHeader("Authorization");
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             return authHeader.substring(7);
         }
 
+        // 2️⃣ Cookies (browser)
         Cookie[] cookies = request.getCookies();
         if (cookies != null) {
             for (Cookie cookie : cookies) {
