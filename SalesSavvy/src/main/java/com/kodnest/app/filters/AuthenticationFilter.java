@@ -33,7 +33,7 @@ public class AuthenticationFilter implements Filter {
     private final UserRepository userRepository;
 
     // CHANGE THIS WHEN DEPLOYED
-    private static final String ALLOWED_ORIGIN = "https://ecommerce-salessavvy.onrender.com";
+    private static final String ALLOWED_ORIGIN = "http://localhost:3000";
 
     private static final String[] UNAUTHENTICATED_PATHS = {
             "/api/users/register",
