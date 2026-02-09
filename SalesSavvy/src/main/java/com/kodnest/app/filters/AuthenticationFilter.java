@@ -32,14 +32,11 @@ public class AuthenticationFilter implements Filter {
     private final AuthServiceContract authService;
     private final UserRepository userRepository;
 
-    private static final String[] ALLOWED_ORIGINS = {
-        "http://localhost:3000",
-        "https://ecommerce-salessavvy.onrender.com"
-    };
+    private static final String ALLOWED_ORIGIN = "http://localhost:3000";
 
     private static final String[] UNAUTHENTICATED_PATHS = {
-        "/api/users/register",
-        "/api/auth/login"
+            "/api/users/register",
+            "/api/auth/login"
     };
 
     public AuthenticationFilter(AuthServiceContract authService, UserRepository userRepository) {
@@ -59,28 +56,19 @@ public class AuthenticationFilter implements Filter {
             String requestURI = httpRequest.getRequestURI();
             logger.info("Request URI: {}", requestURI);
 
-            // ALWAYS add CORS headers first
-            setCORSHeaders(httpRequest, httpResponse);
-
-            // Handle OPTIONS preflight
+            // ✅ Allow OPTIONS (CORS preflight)
             if ("OPTIONS".equalsIgnoreCase(httpRequest.getMethod())) {
-                httpResponse.setStatus(HttpServletResponse.SC_OK);
+                setCORSHeaders(httpResponse);
                 return;
             }
 
-            // Allow public product APIs
-            if (requestURI.startsWith("/api/products")) {
-                chain.doFilter(request, response);
-                return;
-            }
-
-            // Allow login & register without auth
+            // ✅ Allow unauthenticated paths
             if (Arrays.asList(UNAUTHENTICATED_PATHS).contains(requestURI)) {
                 chain.doFilter(request, response);
                 return;
             }
 
-            // Extract token
+            // ✅ Extract token from Authorization header OR cookies
             String token = extractToken(httpRequest);
             System.out.println("TOKEN = " + token);
 
@@ -90,7 +78,7 @@ public class AuthenticationFilter implements Filter {
                 return;
             }
 
-            // Validate user
+            // ✅ Extract username
             String username = authService.extractUsername(token);
             Optional<User> userOptional = userRepository.findByUsername(username);
 
@@ -105,7 +93,7 @@ public class AuthenticationFilter implements Filter {
 
             logger.info("Authenticated User: {}, Role: {}", authenticatedUser.getUsername(), role);
 
-            // Role-based security
+            // ✅ Role-based access
             if (requestURI.startsWith("/admin/") && role != Role.ADMIN) {
                 sendErrorResponse(httpResponse, HttpServletResponse.SC_FORBIDDEN,
                         "Forbidden: Admin access required");
@@ -118,7 +106,7 @@ public class AuthenticationFilter implements Filter {
                 return;
             }
 
-            // Attach authenticated user
+            // ✅ Attach authenticated user
             httpRequest.setAttribute("authenticatedUser", authenticatedUser);
 
             chain.doFilter(request, response);
@@ -130,13 +118,16 @@ public class AuthenticationFilter implements Filter {
         }
     }
 
+    // 🔑 Reads JWT from Authorization header OR cookies
     private String extractToken(HttpServletRequest request) {
 
+        // 1️⃣ Authorization header (Postman / mobile apps)
         String authHeader = request.getHeader("Authorization");
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             return authHeader.substring(7);
         }
 
+        // 2️⃣ Cookies (browser)
         Cookie[] cookies = request.getCookies();
         if (cookies != null) {
             for (Cookie cookie : cookies) {
@@ -149,23 +140,16 @@ public class AuthenticationFilter implements Filter {
         return null;
     }
 
-    private void setCORSHeaders(HttpServletRequest request, HttpServletResponse response) {
-
-        String origin = request.getHeader("Origin");
-
-        if (origin != null && Arrays.asList(ALLOWED_ORIGINS).contains(origin)) {
-            response.setHeader("Access-Control-Allow-Origin", origin);
-        }
-
+    private void setCORSHeaders(HttpServletResponse response) {
+        response.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
         response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
         response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
         response.setHeader("Access-Control-Allow-Credentials", "true");
+        response.setStatus(HttpServletResponse.SC_OK);
     }
 
     private void sendErrorResponse(HttpServletResponse response, int statusCode, String message)
             throws IOException {
-
-        response.setHeader("Content-Type", "text/plain");
         response.setStatus(statusCode);
         response.getWriter().write(message);
     }
