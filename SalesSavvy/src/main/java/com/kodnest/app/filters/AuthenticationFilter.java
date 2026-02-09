@@ -32,7 +32,7 @@ public class AuthenticationFilter implements Filter {
     private final AuthServiceContract authService;
     private final UserRepository userRepository;
 
-    private static final String ALLOWED_ORIGIN = "http://localhost:3000";
+  //  private static final String ALLOWED_ORIGIN = "http://localhost:3000";
 
     private static final String[] UNAUTHENTICATED_PATHS = {
             "/api/users/register",
@@ -58,7 +58,7 @@ public class AuthenticationFilter implements Filter {
 
             // ✅ Allow OPTIONS (CORS preflight)
             if ("OPTIONS".equalsIgnoreCase(httpRequest.getMethod())) {
-                setCORSHeaders(httpResponse);
+                setCORSHeaders(httpRequest, httpResponse);
                 return;
             }
 
@@ -139,14 +139,23 @@ public class AuthenticationFilter implements Filter {
 
         return null;
     }
+    private void setCORSHeaders(HttpServletRequest request, HttpServletResponse response) {
 
-    private void setCORSHeaders(HttpServletResponse response) {
-        response.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
+        String origin = request.getHeader("Origin");
+
+        if (origin != null &&
+            (origin.equals("http://localhost:3000") ||
+             origin.equals("https://ecommerce-salessavvy.onrender.com"))) {
+
+            response.setHeader("Access-Control-Allow-Origin", origin);
+        }
+
         response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
         response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
         response.setHeader("Access-Control-Allow-Credentials", "true");
         response.setStatus(HttpServletResponse.SC_OK);
     }
+
 
     private void sendErrorResponse(HttpServletResponse response, int statusCode, String message)
             throws IOException {
