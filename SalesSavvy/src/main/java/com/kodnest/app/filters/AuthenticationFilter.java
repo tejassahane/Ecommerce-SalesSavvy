@@ -56,9 +56,12 @@ public class AuthenticationFilter implements Filter {
             String requestURI = httpRequest.getRequestURI();
             logger.info("Request URI: {}", requestURI);
 
+            // ✅ Always set CORS headers FIRST (for every request)
+            setCORSHeaders(httpResponse);
+
             // ✅ Allow OPTIONS (CORS preflight)
             if ("OPTIONS".equalsIgnoreCase(httpRequest.getMethod())) {
-                setCORSHeaders(httpResponse);
+                chain.doFilter(request, response);
                 return;
             }
 
@@ -78,7 +81,7 @@ public class AuthenticationFilter implements Filter {
                 return;
             }
 
-            // ✅ Extract username
+            // ✅ Extract username from token
             String username = authService.extractUsername(token);
             Optional<User> userOptional = userRepository.findByUsername(username);
 
@@ -93,7 +96,7 @@ public class AuthenticationFilter implements Filter {
 
             logger.info("Authenticated User: {}, Role: {}", authenticatedUser.getUsername(), role);
 
-            // ✅ Role-based access
+            // ✅ Role-based access control
             if (requestURI.startsWith("/admin/") && role != Role.ADMIN) {
                 sendErrorResponse(httpResponse, HttpServletResponse.SC_FORBIDDEN,
                         "Forbidden: Admin access required");
@@ -106,7 +109,7 @@ public class AuthenticationFilter implements Filter {
                 return;
             }
 
-            // ✅ Attach authenticated user
+            // ✅ Attach authenticated user to request
             httpRequest.setAttribute("authenticatedUser", authenticatedUser);
 
             chain.doFilter(request, response);
@@ -145,11 +148,14 @@ public class AuthenticationFilter implements Filter {
         response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
         response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
         response.setHeader("Access-Control-Allow-Credentials", "true");
-        response.setStatus(HttpServletResponse.SC_OK);
     }
 
     private void sendErrorResponse(HttpServletResponse response, int statusCode, String message)
             throws IOException {
+
+        // ✅ VERY IMPORTANT – add CORS headers even for errors
+        setCORSHeaders(response);
+
         response.setStatus(statusCode);
         response.getWriter().write(message);
     }
